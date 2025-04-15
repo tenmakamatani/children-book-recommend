@@ -4,6 +4,13 @@ from pathlib import Path
 from janome.tokenizer import Tokenizer
 from collections import defaultdict, Counter
 
+stopwords = {
+    '', 'こと', 'これ', 'それ', 'あれ', 'もの', 'ため', 'ところ', 'よう', 'さん', 'そう', 'の', 'に',
+    'が', 'は', 'を', 'と', 'も', 'で', 'から', 'まで', 'より', 'へ', 'など', 'や', 'し', 'して',
+    'また', 'そして', 'しかし', 'でも', 'ある', 'いる', 'なる', 'ない', 'できる', 'する', 'した',
+    'ような', 'ように', 'だけ', 'その', 'この', 'あの',
+}
+
 # ./data以下のメタデータのjsonを全て取得する
 def load_all_metadata(base_dir='./data'):
     metadata_list = []
@@ -53,7 +60,7 @@ def tokenize(text):
         pos = token.part_of_speech.split(',')[0]
         base = token.base_form
 
-        if pos in {'名詞', '動詞', '形容詞'} and base != '*':
+        if pos in {'名詞', '動詞', '形容詞'} and base not in stopwords and base != '*':
             words.append(base)
 
     return words
@@ -78,7 +85,6 @@ def build_topic_keywords(extracted_entries):
 
 # 文章から主題を推定する
 def predict_subjects(text, topic_word_counts):
-    # 解析して名詞だけ取り出し
     words = tokenize(text)
 
     word_set = set(words)  # 重複を省いて効率UP
