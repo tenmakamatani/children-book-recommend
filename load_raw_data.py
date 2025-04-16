@@ -1,4 +1,5 @@
 import os
+import csv
 import json
 from pathlib import Path
 from janome.tokenizer import Tokenizer
@@ -8,7 +9,7 @@ stopwords = {
     '', 'こと', 'これ', 'それ', 'あれ', 'もの', 'ため', 'ところ', 'よう', 'さん', 'そう', 'の', 'に',
     'が', 'は', 'を', 'と', 'も', 'で', 'から', 'まで', 'より', 'へ', 'など', 'や', 'し', 'して',
     'また', 'そして', 'しかし', 'でも', 'ある', 'いる', 'なる', 'ない', 'できる', 'する', 'した',
-    'ような', 'ように', 'だけ', 'その', 'この', 'あの',
+    'ような', 'ように', 'だけ', 'その', 'この', 'あの', 'れる'
 }
 
 # ./data以下のメタデータのjsonを全て取得する
@@ -131,12 +132,22 @@ def evaluate_predictions(test_data, topic_word_counts):
         'Accuracy (%)': round(accuracy, 2)
     }
 
+# TopicKeywordsの上位n個ずつをtxtファイルに出力する
+def export_topic_keywords_to_txt(topic_keywords, filepath='topic_keywords.txt', top_n=10):
+    with open(filepath, mode='w', encoding='utf-8') as f:
+        for subject, counter in topic_keywords.items():
+            f.write(f"【{subject}】\n")
+            for word, count in counter.most_common(top_n):
+                f.write(f"  - {word}: {count}\n")
+            f.write("\n")
+
 
 def main():
     all_metadata = load_all_metadata()
     all_extracted_metadata = extract_summary_and_subjects(all_metadata)
     [train_data, test_data] = split_data(all_extracted_metadata, 0.8)
     topic_keywords = build_topic_keywords(train_data)
+    export_topic_keywords_to_txt(topic_keywords)
     result = evaluate_predictions(test_data, topic_keywords)
     print(result)
 
