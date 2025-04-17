@@ -1,5 +1,4 @@
 import os
-import csv
 import json
 from pathlib import Path
 from janome.tokenizer import Tokenizer
@@ -12,7 +11,7 @@ stopwords = {
     'ような', 'ように', 'だけ', 'その', 'この', 'あの', 'れる'
 }
 
-# ./data以下のメタデータのjsonを全て取得する
+# ./data以下のメタデータのjsonを全て取得する。ファイルに書き出すために初回のみ実行が必要
 def load_all_metadata(base_dir='./data'):
     metadata_list = []
 
@@ -29,7 +28,7 @@ def load_all_metadata(base_dir='./data'):
     
     return metadata_list
 
-# jsonからあらすじと主題のリストを抽出する
+# jsonからあらすじと主題のリストを抽出する。ファイルに書き出すために初回のみ実行が必要
 def extract_summary_and_subjects(all_metadata):
     extracted = []
 
@@ -41,7 +40,32 @@ def extract_summary_and_subjects(all_metadata):
 
         try:
             subjects_raw = metadata['item_7_text_24']['attribute_value_mlt']
-            subjects = [entry['subitem_text_value'] for entry in subjects_raw if 'subitem_text_value' in entry]
+            subjects = []
+            for entry in subjects_raw:
+                subject = entry['subitem_text_value']
+                if subject == ' 仲間意識を育てる':
+                    subject = '仲間意識を育てる'
+                if subject == '一人の時間を持つ':
+                    print('///////')
+                    print(subject)
+                    subject = '一人の時間をもつ'
+                    print(subject)
+                if subject == '価値観を持つ':
+                    subject = '価値観をもつ'
+                if subject == '手袋・帽子・靴下・傘・マフラー等と':
+                    subject = '手袋・帽子・靴下・傘・マフラー等と遊ぶ'
+                if subject == '死　':
+                    subject = '死'
+                if subject == '自尊心を持つ':
+                    subject = '自尊心をもつ'
+                if subject == '雪と遊ぶ遊ぶ':
+                    subject = '雪と遊ぶ'
+                if subject == '買い物をする':
+                    subject = '買物をする'
+                if subject == '心':
+                    continue
+                subjects.append(subject)
+            
         except (KeyError, TypeError):
             subjects = []
 
@@ -66,18 +90,39 @@ def tokenize(text):
 
     return words
 
+# extracted_metadataを書き出す
+def export_extracted_metadata(extracted_metadata, filepath='extracted_metadata.json'):
+    simple_data = []
+
+    for entry in extracted_metadata:
+        summary = entry['summary']
+        subjects = entry['subjects']
+        tokenized_summary = tokenize(summary)
+
+        simple_data.append({
+            'summary': tokenized_summary,  # 形態素解析済み単語リスト
+            'subjects': subjects
+        })
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(simple_data, f, ensure_ascii=False, indent=2)
+
+# extracted_metadataを読み込む
+def load_extracted_metadata(filepath='extracted_metadata.json'):
+    with open(filepath, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    return data
+
 # 特徴語リストの構築
 def build_topic_keywords(extracted_entries):
     topic_word_counts = defaultdict(Counter)
 
     for entry in extracted_entries:
-        summary = entry['summary']
+        words = entry['summary']
         subjects = entry['subjects']
 
-        if not summary or not subjects:
+        if not words or not subjects:
             continue
-
-        words = tokenize(summary)
 
         for subject in subjects:
             topic_word_counts[subject].update(words)
@@ -85,10 +130,8 @@ def build_topic_keywords(extracted_entries):
     return topic_word_counts
 
 # 文章から主題を推定する
-def predict_subjects(text, topic_word_counts):
-    words = tokenize(text)
-
-    word_set = set(words)  # 重複を省いて効率UP
+def predict_subjects(summary, topic_word_counts):
+    word_set = set(summary)  # 重複を省いて効率UP
     results = []
 
     for subject, word_counter in topic_word_counts.items():
@@ -136,15 +179,19 @@ def evaluate_predictions(test_data, topic_word_counts):
 def export_topic_keywords_to_txt(topic_keywords, filepath='topic_keywords.txt', top_n=10):
     with open(filepath, mode='w', encoding='utf-8') as f:
         for subject, counter in topic_keywords.items():
-            f.write(f"【{subject}】\n")
+            f.write(f"{subject}\n")
             for word, count in counter.most_common(top_n):
                 f.write(f"  - {word}: {count}\n")
             f.write("\n")
 
-
 def main():
-    all_metadata = load_all_metadata()
-    all_extracted_metadata = extract_summary_and_subjects(all_metadata)
+    # 基本的に実行不要。summaryの形態素解析方法を変更した時のみ実行する
+    # ファイルの読み込み→あらすじ、主題情報の抽出→整形(形態素解析、表記揺れの修正)→ファイルへの書き出し を行っている
+
+    # all_metadata = load_all_metadata()
+    # all_extracted_metadata = extract_summary_and_subjects(all_metadata)
+    # export_extracted_metadata(all_extracted_metadata)
+    all_extracted_metadata = load_extracted_metadata()
     [train_data, test_data] = split_data(all_extracted_metadata, 0.8)
     topic_keywords = build_topic_keywords(train_data)
     export_topic_keywords_to_txt(topic_keywords)
