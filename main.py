@@ -131,11 +131,10 @@ def build_topic_keywords(extracted_entries):
 
 # 文章から主題を推定する
 def predict_subjects(summary, topic_word_counts):
-    word_set = set(summary)  # 重複を省いて効率UP
     results = []
 
     for subject, word_counter in topic_word_counts.items():
-        count = sum(1 for word in word_set if word in word_counter)
+        count = sum(1 for word in summary if word in word_counter)
         results.append({'subject': subject, 'count': count})
 
     # 一致数の多い順にソート（オプション）
