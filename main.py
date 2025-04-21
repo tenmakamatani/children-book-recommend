@@ -1,8 +1,10 @@
 import os
+import numpy as np
 import json
 from pathlib import Path
 from janome.tokenizer import Tokenizer
 from collections import defaultdict, Counter
+from sklearn.metrics.pairwise import cosine_similarity
 
 stopwords = {
     '', 'こと', 'これ', 'それ', 'あれ', 'もの', 'ため', 'ところ', 'よう', 'さん', 'そう', 'の', 'に',
@@ -46,10 +48,7 @@ def extract_summary_and_subjects(all_metadata):
                 if subject == ' 仲間意識を育てる':
                     subject = '仲間意識を育てる'
                 if subject == '一人の時間を持つ':
-                    print('///////')
-                    print(subject)
                     subject = '一人の時間をもつ'
-                    print(subject)
                 if subject == '価値観を持つ':
                     subject = '価値観をもつ'
                 if subject == '手袋・帽子・靴下・傘・マフラー等と':
@@ -183,7 +182,85 @@ def export_topic_keywords_to_txt(topic_keywords, filepath='topic_keywords.txt', 
                 f.write(f"  - {word}: {count}\n")
             f.write("\n")
 
-def main():
+# 1つの絵本の主題ベクトルを作る
+def generate_subjects_vector(tokens, topic_keywords):
+    scores = []
+    word_set = set(tokens)
+    for subject, word_counter in topic_keywords.items():
+        count = sum(1 for word in word_set if word in word_counter)
+        scores.append(count)
+
+    return np.array(scores)  # 280次元ベクトル
+
+# 全ての絵本について、主題ベクトルを作る
+def generate_all_books_vectors(extracted_metadata, topic_keywords):
+    vectors = []
+
+    for entry in extracted_metadata:
+        tokens = entry['summary']
+        scores = generate_subjects_vector(tokens, topic_keywords)
+        vectors.append(scores)
+
+    return np.array(vectors)
+
+# 
+def find_most_similar_books(vectors):
+    similarity_matrix = cosine_similarity(vectors)
+    
+    most_similar_indices = []
+    for i in range(len(vectors)):
+        sim = similarity_matrix[i]
+        sim[i] = -1  # 自分自身を除外
+        most_similar_idx = np.argmax(sim)
+        most_similar_indices.append(most_similar_idx)
+    
+    return most_similar_indices
+
+def get_recommend_matching_score(extracted_metadata, most_similar_indices):
+    scores = []
+
+    for i, most_similar_idx in enumerate(most_similar_indices):
+        subjects_i = set(extracted_metadata[i]['subjects'])
+        subjects_j = set(extracted_metadata[most_similar_idx]['subjects'])
+
+        if not subjects_i or not subjects_j:
+            continue
+
+        common = subjects_i & subjects_j
+        avg_subject_len = (len(subjects_i) + len(subjects_j)) / 2
+        match_score = len(common) / avg_subject_len
+
+        scores.append(match_score)
+
+    return np.mean(scores)
+
+def output_recommendation_pairs(most_similar_indices, filepath='recommendation_pairs.txt'):
+    data = load_all_metadata()
+    extracted_metadata = extract_summary_and_subjects(data)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        for i, idx in enumerate(most_similar_indices):
+            original_summary = extracted_metadata[i]['summary']
+            recommended_summary = extracted_metadata[idx]['summary']
+            original_subjects = set(extracted_metadata[i]['subjects'])
+            recommended_subjects = set(extracted_metadata[idx]['subjects'])
+
+            # 一致率の計算
+            if not original_subjects or not recommended_subjects:
+                match_rate = 0
+            else:
+                common = original_subjects & recommended_subjects
+                avg_subject_len = (len(original_subjects) + len(recommended_subjects)) / 2
+                match_rate = len(common) / avg_subject_len
+
+            f.write(f"==== {i}番目の絵本 ====\n")
+            f.write(f"[元のあらすじ]\n{original_summary}\n")
+            f.write(f"[推薦されたあらすじ]\n{recommended_summary}\n")
+            f.write(f"[元の主題]\n{original_subjects}\n")
+            f.write(f"[推薦された主題]\n{recommended_subjects}\n")
+            f.write(f"[主題の一致率]\n{match_rate:.2f}\n")
+            f.write("\n\n")
+
+def calculate_topic_words_accuracy():
     # 基本的に実行不要。summaryの形態素解析方法を変更した時のみ実行する
     # ファイルの読み込み→あらすじ、主題情報の抽出→整形(形態素解析、表記揺れの修正)→ファイルへの書き出し を行っている
 
@@ -197,4 +274,13 @@ def main():
     result = evaluate_predictions(test_data, topic_keywords)
     print(result)
 
-main()
+def calculate_recommend_accuracy():
+    extracted_metadata = load_extracted_metadata()
+    topic_keywords = build_topic_keywords(extracted_metadata)
+    vectors = generate_all_books_vectors(extracted_metadata, topic_keywords)
+    most_similar_indices = find_most_similar_books(vectors)
+    output_recommendation_pairs(most_similar_indices)
+    average_matching_score = get_recommend_matching_score(extracted_metadata, most_similar_indices)
+    print(f"平均一致率: {average_matching_score:.4f}")
+
+calculate_recommend_accuracy()
