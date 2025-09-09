@@ -70,6 +70,7 @@ def extract_summary_and_subjects(all_metadata):
 
         extracted.append({
             'index': i,
+            'title': metadata['title'],
             'summary': summary,
             'subjects': subjects
         })
@@ -90,7 +91,7 @@ def tokenize(text):
     return words
 
 # extracted_metadataを書き出す
-def export_extracted_metadata(extracted_metadata, filepath='extracted_metadata.json'):
+def export_extracted_metadata(extracted_metadata, filepath='extracted_metadata_raw.json'):
     simple_data = []
 
     for entry in extracted_metadata:
@@ -99,7 +100,8 @@ def export_extracted_metadata(extracted_metadata, filepath='extracted_metadata.j
         tokenized_summary = tokenize(summary)
 
         simple_data.append({
-            'summary': tokenized_summary,  # 形態素解析済み単語リスト
+            'title': entry['title'][0],
+            'summary': summary,  # 形態素解析済み単語リスト
             'subjects': subjects
         })
 
@@ -216,21 +218,24 @@ def find_most_similar_books(vectors):
     
     return most_similar_indices
 
-def get_recommend_matching_score(extracted_metadata, most_similar_indices):
+def get_recommend_dice_score(extracted_metadata, most_similar_indices):
     scores = []
 
     for i, most_similar_idx in enumerate(most_similar_indices):
         subjects_i = set(extracted_metadata[i]['subjects'])
         subjects_j = set(extracted_metadata[most_similar_idx]['subjects'])
 
+        if not subjects_i and not subjects_j:
+            scores.append(1.0)  # 両方空集合なら完全一致
+            continue
         if not subjects_i or not subjects_j:
+            scores.append(0.0)  # 片方だけ空なら一致なし
             continue
 
-        common = subjects_i & subjects_j
-        avg_subject_len = (len(subjects_i) + len(subjects_j)) / 2
-        match_score = len(common) / avg_subject_len
-
-        scores.append(match_score)
+        inter = len(subjects_i & subjects_j)
+        denom = len(subjects_i) + len(subjects_j)
+        dice = 2 * inter / denom
+        scores.append(dice)
 
     return np.mean(scores)
 
@@ -280,7 +285,7 @@ def calculate_recommend_accuracy():
     vectors = generate_all_books_vectors(extracted_metadata, topic_keywords)
     most_similar_indices = find_most_similar_books(vectors)
     output_recommendation_pairs(most_similar_indices)
-    average_matching_score = get_recommend_matching_score(extracted_metadata, most_similar_indices)
+    average_matching_score = get_recommend_dice_score(extracted_metadata, most_similar_indices)
     print(f"平均一致率: {average_matching_score:.4f}")
 
 calculate_recommend_accuracy()
